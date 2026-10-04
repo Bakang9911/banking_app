@@ -19,13 +19,37 @@ public class User {
     @Column(nullable = false)
     private String role;
 
+    @Column(nullable = false)
+    private String name;
+
+    @Column(nullable = false)
+    private String surname;
+
+    @Column(nullable = false, unique = true)
+    private String nationalId;
+
+    @Column(nullable = false, unique = true)
+    private String cellNumber;
+
     public User() {
     }
 
-    public User(String username, String password, String role) {
+    public User(
+            String username,
+            String password,
+            String role,
+            String name,
+            String surname,
+            String nationalId,
+            String cellNumber) {
+
         this.username = username;
         this.password = password;
         this.role = role;
+        this.name = name;
+        this.surname = surname;
+        this.nationalId = nationalId;
+        this.cellNumber = cellNumber;
     }
 
     public Long getId() {
@@ -54,5 +78,37 @@ public class User {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getSurname() {
+        return surname;
+    }
+
+    public void setSurname(String surname) {
+        this.surname = surname;
+    }
+
+    public String getNationalId() {
+        return nationalId;
+    }
+
+    public void setNationalId(String nationalId) {
+        this.nationalId = nationalId;
+    }
+
+    public String getCellNumber() {
+        return cellNumber;
+    }
+
+    public void setCellNumber(String cellNumber) {
+        this.cellNumber = cellNumber;
     }
 }

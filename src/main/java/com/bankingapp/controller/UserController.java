@@ -1,6 +1,7 @@
 package com.bankingapp.controller;
 // SCRUM-3: Starting User Login API implementation
 import com.bankingapp.dto.RegisterRequest;
+import com.bankingapp.dto.UserResponse;
 import com.bankingapp.entity.User;
 import com.bankingapp.service.UserService;
 import org.springframework.http.HttpStatus;
@@ -18,12 +19,21 @@ public class UserController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public User register(@RequestBody RegisterRequest request) {
+    public UserResponse register(@RequestBody RegisterRequest request) {
 
-        return userService.createUser(
+        User user = userService.createUser(
+                request.getName(),
+                request.getSurname(),
+                request.getNationalId(),
+                request.getCellNumber(),
                 request.getUsername(),
-                request.getPassword(),
-                "CUSTOMER"
+                request.getPassword()
+        );
+
+        return new UserResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getRole()
         );
     }
 }

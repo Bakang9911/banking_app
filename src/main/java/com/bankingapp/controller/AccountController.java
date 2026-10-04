@@ -1,5 +1,6 @@
 package com.bankingapp.controller;
 
+import com.bankingapp.dto.AccountResponse;
 import com.bankingapp.entity.Account;
 import com.bankingapp.service.AccountService;
 import org.springframework.security.core.Authentication;
@@ -17,25 +18,26 @@ public class AccountController {
         this.accountService = accountService;
     }
 
-    @PostMapping
-    public Account createAccount(
-            @RequestBody Account account,
+    @GetMapping
+    public List<AccountResponse> getAccounts(
             Authentication authentication) {
 
         String username = authentication.getName();
 
-        return accountService.createAccount(
-                account,
-                username
-        );
+        return accountService.getAccountsForUser(username)
+                .stream()
+                .map(AccountController::toResponse)
+                .toList();
     }
 
-    @GetMapping
-    public List<Account> getAccounts(
-            Authentication authentication) {
-
-        String username = authentication.getName();
-
-        return accountService.getAccountsForUser(username);
+    private static AccountResponse toResponse(Account account) {
+        return new AccountResponse(
+                account.getId(),
+                account.getAccountNumber(),
+                account.getBalance(),
+                account.getCurrency(),
+                account.getName(),
+                account.getType()
+        );
     }
 }

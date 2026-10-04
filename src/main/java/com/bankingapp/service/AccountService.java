@@ -32,6 +32,13 @@ public class AccountService {
                                 "Authenticated user not found"
                         ));
 
+        // One account per customer
+        if (accountRepository.existsByUserId(user.getId())) {
+            throw new IllegalArgumentException(
+                    "Customer already has an account"
+            );
+        }
+
         account.setUser(user);
 
         return accountRepository.save(account);

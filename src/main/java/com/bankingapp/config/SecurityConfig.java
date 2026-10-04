@@ -1,14 +1,28 @@
 package com.bankingapp.config;
-
+import org.springframework.beans.factory.annotation.Value;
 import com.bankingapp.security.CustomUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.web.SecurityFilterChain;
+
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
 
 @Configuration
 public class SecurityConfig {
@@ -26,7 +40,6 @@ public class SecurityConfig {
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
-
         DaoAuthenticationProvider provider =
                 new DaoAuthenticationProvider(userDetailsService);
 
@@ -35,26 +48,116 @@ public class SecurityConfig {
         return provider;
     }
 
-  @Bean
-public SecurityFilterChain securityFilterChain(HttpSecurity http)
-        throws Exception {
+    @Bean
+    public AuthenticationManager authenticationManager(
+            AuthenticationConfiguration configuration) throws Exception {
 
-    http
-            .authorizeHttpRequests(auth -> auth
-                    .requestMatchers(
-                            "/api/users/register",
-                            "/api/csrf"
-                    ).permitAll()
+        return configuration.getAuthenticationManager();
+    }
 
-                    .requestMatchers("/api/admin/**")
-                    .hasRole("ADMIN")
+    @Bean
+    public SecretKey jwtSecretKey(
+            @Value("${jwt.secret}") String secret) {
 
-                    .anyRequest()
-                    .authenticated()
-            )
-            .authenticationProvider(authenticationProvider())
-            .httpBasic(httpBasic -> {});
+        if (secret == null || secret.length() < 32) {
+            throw new IllegalStateException(
+                    "JWT secret must be configured and contain at least 32 characters."
+            );
+        }
 
-    return http.build();
-}
+        return new SecretKeySpec(
+                secret.getBytes(StandardCharsets.UTF_8),
+                "HmacSHA256"
+        );
+    }
+    @Bean
+    public JwtEncoder jwtEncoder(SecretKey jwtSecretKey) {
+        return NimbusJwtEncoder
+                .withSecretKey(jwtSecretKey)
+                .algorithm(MacAlgorithm.HS256)
+                .build();
+    }
+
+    @Bean
+    public JwtDecoder jwtDecoder(SecretKey jwtSecretKey) {
+        return NimbusJwtDecoder
+                .withSecretKey(jwtSecretKey)
+                .macAlgorithm(MacAlgorithm.HS256)
+                .build();
+    }
+
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtAuthenticationConverter converter =
+                new JwtAuthenticationConverter();
+
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            String role = jwt.getClaimAsString("role");
+
+            if (role == null || role.isBlank()) {
+                return java.util.List.of();
+            }
+
+            return java.util.List.of(
+                    new SimpleGrantedAuthority("ROLE_" + role)
+            );
+        });
+
+        return converter;
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            JwtAuthenticationConverter jwtAuthenticationConverter)
+            throws Exception {
+
+        http
+                .csrf(csrf -> csrf.disable())
+
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
+
+                .authorizeHttpRequests(auth -> auth
+
+                        .requestMatchers(
+                                "/api/users/register",
+                                "/api/auth/login",
+                                "/api/csrf",
+                                "/error"
+                        ).permitAll()
+
+                        .requestMatchers("/api/admin/**")
+                        .hasRole("ADMIN")
+
+                        .requestMatchers("/api/deposit-requests/**")
+                        .hasRole("CUSTOMER")
+
+                        .requestMatchers(
+                                "/api/transactions/withdraw",
+                                "/api/transactions/transfer"
+                        ).hasRole("CUSTOMER")
+
+                        .requestMatchers("/api/transactions/deposit")
+                        .hasRole("ADMIN")
+
+                        .anyRequest()
+                        .authenticated()
+                )
+
+                .authenticationProvider(authenticationProvider())
+
+                .oauth2ResourceServer(oauth2 ->
+                        oauth2.jwt(jwt ->
+                                jwt.jwtAuthenticationConverter(
+                                        jwtAuthenticationConverter
+                                )
+                        )
+                );
+
+        return http.build();
+    }
 }
