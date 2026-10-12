@@ -28,10 +28,7 @@ public class TransactionController {
             Authentication authentication) {
 
         Transaction transaction = transactionService.deposit(
-                accountId,
-                amount,
-                authentication.getName()
-        );
+                accountId, amount, authentication.getName());
 
         return toResponse(transaction);
     }
@@ -44,14 +41,12 @@ public class TransactionController {
             Authentication authentication) {
 
         Transaction transaction = transactionService.withdraw(
-                accountId,
-                amount,
-                authentication.getName()
-        );
+                accountId, amount, authentication.getName());
 
         return toResponse(transaction);
     }
 
+    // Existing transfer endpoint retained for compatibility.
     @PostMapping("/transfer")
     @ResponseStatus(HttpStatus.CREATED)
     public void transfer(
@@ -64,8 +59,25 @@ public class TransactionController {
                 fromAccountId,
                 toAccountId,
                 amount,
-                authentication.getName()
-        );
+                authentication.getName());
+    }
+
+    // New transfer endpoint using the recipient's eight-digit account number.
+    @PostMapping("/transfer-to-account-number")
+    @ResponseStatus(HttpStatus.CREATED)
+    public void transferToAccountNumber(
+            @RequestParam Long fromAccountId,
+            @RequestParam String beneficiaryAccountNumber,
+            @RequestParam BigDecimal amount,
+            @RequestParam(required = false) String reference,
+            Authentication authentication) {
+
+        transactionService.transferToAccountNumber(
+                fromAccountId,
+                beneficiaryAccountNumber,
+                amount,
+                reference,
+                authentication.getName());
     }
 
     @GetMapping
@@ -79,6 +91,7 @@ public class TransactionController {
                 .map(TransactionController::toResponse)
                 .toList();
     }
+
     private static TransactionResponse toResponse(Transaction transaction) {
 
         String relatedAccountNumber = null;
@@ -89,13 +102,11 @@ public class TransactionController {
         if (transaction.getRelatedAccount() != null) {
             relatedAccountNumber =
                     transaction.getRelatedAccount().getAccountNumber();
-
             relatedAccountName =
                     transaction.getRelatedAccount().getName();
         }
 
         switch (transaction.getType()) {
-
             case DEPOSIT:
                 direction = "MONEY_IN";
                 description = "Cash deposit";
@@ -122,15 +133,15 @@ public class TransactionController {
         }
 
         return new TransactionResponse(
-                transaction.getId(),
-                transaction.getType().name(),
-                direction,
-                description,
-                transaction.getAmount(),
-                transaction.getTimestamp(),
-                relatedAccountNumber,
-                relatedAccountName
+               transaction.getId(),
+        transaction.getType().name(),
+        direction,
+        description,
+        transaction.getAmount(),
+        transaction.getTimestamp(),
+        relatedAccountNumber,
+        relatedAccountName,
+        transaction.getReference()
         );
     }
-
 }

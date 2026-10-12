@@ -21,364 +21,213 @@ public class TransactionService {
     public TransactionService(
             AccountRepository accountRepository,
             TransactionRepository transactionRepository) {
-
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
     }
 
-    // =========================================================
-    // CUSTOMER - DEPOSIT
-    // =========================================================
-
     @Transactional
-    public Transaction deposit(
-            Long accountId,
-            BigDecimal amount,
-            String username) {
-
+    public Transaction deposit(Long accountId, BigDecimal amount, String username) {
         Account account = getAccountForUser(accountId, username);
-
         validateAmount(amount);
-
-        account.setBalance(
-                account.getBalance().add(amount)
-        );
-
+        account.setBalance(account.getBalance().add(amount));
         accountRepository.save(account);
-
-        return createTransaction(
-                account,
-                TransactionType.DEPOSIT,
-                amount,
-                null
-        );
+        return createTransaction(account, TransactionType.DEPOSIT, amount, null, null);
     }
 
-    // =========================================================
-    // ADMIN - DEPOSIT
-    // =========================================================
-
     @Transactional
-    public Transaction adminDeposit(
-            Long accountId,
-            BigDecimal amount) {
-
+    public Transaction adminDeposit(Long accountId, BigDecimal amount) {
         validateAmount(amount);
-
         Account account = getAccount(accountId);
-
-        account.setBalance(
-                account.getBalance().add(amount)
-        );
-
+        account.setBalance(account.getBalance().add(amount));
         accountRepository.save(account);
-
-        return createTransaction(
-                account,
-                TransactionType.DEPOSIT,
-                amount,
-                null
-        );
+        return createTransaction(account, TransactionType.DEPOSIT, amount, null, null);
     }
 
-    // =========================================================
-    // CUSTOMER - WITHDRAW
-    // =========================================================
-
     @Transactional
-    public Transaction withdraw(
-            Long accountId,
-            BigDecimal amount,
-            String username) {
-
-        Account account =
-                getAccountForUser(accountId, username);
-
+    public Transaction withdraw(Long accountId, BigDecimal amount, String username) {
+        Account account = getAccountForUser(accountId, username);
         return performWithdrawal(account, amount);
     }
 
-    // =========================================================
-    // ADMIN - WITHDRAW
-    // =========================================================
-
     @Transactional
-    public Transaction adminWithdraw(
-            Long accountId,
-            BigDecimal amount) {
-
-        Account account = getAccount(accountId);
-
-        return performWithdrawal(account, amount);
+    public Transaction adminWithdraw(Long accountId, BigDecimal amount) {
+        return performWithdrawal(getAccount(accountId), amount);
     }
 
-    // =========================================================
-    // CUSTOMER - TRANSFER
-    // =========================================================
-
+    // Existing customer transfer method retained for compatibility.
     @Transactional
     public void transfer(
             Long fromAccountId,
             Long toAccountId,
             BigDecimal amount,
             String username) {
-
-        Account fromAccount =
-                getAccountForUser(fromAccountId, username);
-
-        performTransfer(
-                fromAccount,
-                toAccountId,
-                amount
-        );
+        Account fromAccount = getAccountForUser(fromAccountId, username);
+        performTransfer(fromAccount, getAccount(toAccountId), amount, null);
     }
 
-    // =========================================================
-    // ADMIN - TRANSFER
-    // =========================================================
-
+    // Customer transfer using the beneficiary's eight-digit account number.
     @Transactional
-    public void adminTransfer(
+    public void transferToAccountNumber(
             Long fromAccountId,
-            Long toAccountId,
-            BigDecimal amount) {
-
-        Account fromAccount =
-                getAccount(fromAccountId);
-
-        performTransfer(
-                fromAccount,
-                toAccountId,
-                amount
-        );
-    }
-
-    // =========================================================
-    // CUSTOMER - VIEW OWN TRANSACTIONS
-    // =========================================================
-
-    public List<Transaction> getTransactions(
-            Long accountId,
+            String beneficiaryAccountNumber,
+            BigDecimal amount,
+            String reference,
             String username) {
 
+        Account fromAccount = getAccountForUser(fromAccountId, username);
+
+        if (beneficiaryAccountNumber == null
+                || !beneficiaryAccountNumber.matches("\\d{8}")) {
+            throw new IllegalArgumentException(
+                    "Beneficiary account number must contain exactly 8 digits.");
+        }
+
+        Account toAccount = accountRepository
+                .findByAccountNumber(beneficiaryAccountNumber)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Beneficiary account not found."));
+
+        performTransfer(fromAccount, toAccount, amount, normalizeReference(reference));
+    }
+
+    @Transactional
+    public void adminTransfer(Long fromAccountId, Long toAccountId, BigDecimal amount) {
+        performTransfer(getAccount(fromAccountId), getAccount(toAccountId), amount, null);
+    }
+
+    public List<Transaction> getTransactions(Long accountId, String username) {
         getAccountForUser(accountId, username);
-
-        return transactionRepository
-                .findByAccountId(accountId);
+        return transactionRepository.findByAccountId(accountId);
     }
 
-    // =========================================================
-    // ADMIN - VIEW ONE ACCOUNT'S TRANSACTIONS
-    // =========================================================
-
-    public List<Transaction> adminGetTransactions(
-            Long accountId) {
-
+    public List<Transaction> adminGetTransactions(Long accountId) {
         getAccount(accountId);
-
-        return transactionRepository
-                .findByAccountId(accountId);
+        return transactionRepository.findByAccountId(accountId);
     }
-
-    // =========================================================
-    // ADMIN - VIEW ALL TRANSACTIONS
-    // =========================================================
 
     public List<Transaction> adminGetAllTransactions() {
-
         return transactionRepository.findAll();
     }
 
-    // =========================================================
-    // INTERNAL - WITHDRAWAL
-    // =========================================================
-
-    private Transaction performWithdrawal(
-            Account account,
-            BigDecimal amount) {
-
+    private Transaction performWithdrawal(Account account, BigDecimal amount) {
         validateAmount(amount);
 
-        if (account.getBalance()
-                .compareTo(amount) < 0) {
-
-            throw new IllegalArgumentException(
-                    "Insufficient funds"
-            );
+        if (account.getBalance().compareTo(amount) < 0) {
+            throw new IllegalArgumentException("Insufficient funds");
         }
 
-        account.setBalance(
-                account.getBalance().subtract(amount)
-        );
-
+        account.setBalance(account.getBalance().subtract(amount));
         accountRepository.save(account);
-
-        return createTransaction(
-                account,
-                TransactionType.WITHDRAWAL,
-                amount,
-                null
-        );
+        return createTransaction(account, TransactionType.WITHDRAWAL, amount, null, null);
     }
-
-    // =========================================================
-    // INTERNAL - TRANSFER
-    // =========================================================
 
     private void performTransfer(
             Account fromAccount,
-            Long toAccountId,
-            BigDecimal amount) {
+            Account toAccount,
+            BigDecimal amount,
+            String reference) {
 
         validateAmount(amount);
 
-        if (fromAccount.getId().equals(toAccountId)) {
-
-            throw new IllegalArgumentException(
-                    "Cannot transfer to the same account"
-            );
+        if (fromAccount.getId().equals(toAccount.getId())) {
+            throw new IllegalArgumentException("Cannot transfer to the same account.");
         }
 
-        Account toAccount =
-                getAccount(toAccountId);
-
-        if (fromAccount.getBalance()
-                .compareTo(amount) < 0) {
-
+        if (fromAccount.getCurrency() != null
+                && toAccount.getCurrency() != null
+                && !fromAccount.getCurrency().equals(toAccount.getCurrency())) {
             throw new IllegalArgumentException(
-                    "Insufficient funds"
-            );
+                    "Transfers between different currencies are not supported.");
         }
 
-        // Remove money from sender
-        fromAccount.setBalance(
-                fromAccount.getBalance()
-                        .subtract(amount)
-        );
+        if (fromAccount.getBalance().compareTo(amount) < 0) {
+            throw new IllegalArgumentException("Insufficient funds");
+        }
 
-        // Add money to recipient
-        toAccount.setBalance(
-                toAccount.getBalance()
-                        .add(amount)
-        );
+        fromAccount.setBalance(fromAccount.getBalance().subtract(amount));
+        toAccount.setBalance(toAccount.getBalance().add(amount));
 
         accountRepository.save(fromAccount);
         accountRepository.save(toAccount);
 
-        LocalDateTime timestamp =
-                LocalDateTime.now();
+        LocalDateTime timestamp = LocalDateTime.now();
 
-        // Sender transaction
-        Transaction outgoingTransaction =
-                new Transaction();
+        Transaction outgoing = new Transaction();
+        outgoing.setAccount(fromAccount);
+        outgoing.setRelatedAccount(toAccount);
+        outgoing.setType(TransactionType.TRANSFER_OUT);
+        outgoing.setAmount(amount);
+        outgoing.setTimestamp(timestamp);
+        outgoing.setReference(reference);
 
-        outgoingTransaction.setAccount(fromAccount);
-        outgoingTransaction.setRelatedAccount(toAccount);
-        outgoingTransaction.setType(
-                TransactionType.TRANSFER_OUT
-        );
-        outgoingTransaction.setAmount(amount);
-        outgoingTransaction.setTimestamp(timestamp);
+        Transaction incoming = new Transaction();
+        incoming.setAccount(toAccount);
+        incoming.setRelatedAccount(fromAccount);
+        incoming.setType(TransactionType.TRANSFER_IN);
+        incoming.setAmount(amount);
+        incoming.setTimestamp(timestamp);
+        incoming.setReference(reference);
 
-        // Recipient transaction
-        Transaction incomingTransaction =
-                new Transaction();
-
-        incomingTransaction.setAccount(toAccount);
-        incomingTransaction.setRelatedAccount(fromAccount);
-        incomingTransaction.setType(
-                TransactionType.TRANSFER_IN
-        );
-        incomingTransaction.setAmount(amount);
-        incomingTransaction.setTimestamp(timestamp);
-
-        transactionRepository.save(
-                outgoingTransaction
-        );
-
-        transactionRepository.save(
-                incomingTransaction
-        );
+        transactionRepository.save(outgoing);
+        transactionRepository.save(incoming);
     }
-
-    // =========================================================
-    // INTERNAL - CREATE TRANSACTION
-    // =========================================================
 
     private Transaction createTransaction(
             Account account,
             TransactionType type,
             BigDecimal amount,
-            Account relatedAccount) {
+            Account relatedAccount,
+            String reference) {
 
-        Transaction transaction =
-                new Transaction();
-
+        Transaction transaction = new Transaction();
         transaction.setAccount(account);
-        transaction.setRelatedAccount(
-                relatedAccount
-        );
+        transaction.setRelatedAccount(relatedAccount);
         transaction.setType(type);
         transaction.setAmount(amount);
-        transaction.setTimestamp(
-                LocalDateTime.now()
-        );
-
-        return transactionRepository.save(
-                transaction
-        );
+        transaction.setTimestamp(LocalDateTime.now());
+        transaction.setReference(reference);
+        return transactionRepository.save(transaction);
     }
-
-    // =========================================================
-    // FIND ACCOUNT
-    // =========================================================
 
     private Account getAccount(Long accountId) {
-
-        return accountRepository
-                .findById(accountId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Account not found"
-                        ));
+        return accountRepository.findById(accountId)
+                .orElseThrow(() -> new IllegalArgumentException("Account not found"));
     }
 
-    // =========================================================
-    // FIND CUSTOMER'S ACCOUNT
-    // =========================================================
+    private Account getAccountForUser(Long accountId, String username) {
+        Account account = getAccount(accountId);
 
-    private Account getAccountForUser(
-            Long accountId,
-            String username) {
-
-        Account account =
-                getAccount(accountId);
-
-        if (account.getUser() == null ||
-                !account.getUser()
-                        .getUsername()
-                        .equals(username)) {
-
-            throw new IllegalArgumentException(
-                    "You do not own this account"
-            );
+        if (account.getUser() == null
+                || !account.getUser().getUsername().equals(username)) {
+            throw new IllegalArgumentException("You do not own this account");
         }
 
         return account;
     }
 
-    // =========================================================
-    // VALIDATE AMOUNT
-    // =========================================================
-
-    private void validateAmount(
-            BigDecimal amount) {
-
-        if (amount == null ||
-                amount.compareTo(BigDecimal.ZERO) <= 0) {
-
-            throw new IllegalArgumentException(
-                    "Amount must be greater than zero"
-            );
+    private void validateAmount(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Amount must be greater than zero");
         }
+
+        if (amount.scale() > 2) {
+            throw new IllegalArgumentException(
+                    "Amount cannot contain more than two decimal places.");
+        }
+    }
+
+    private String normalizeReference(String reference) {
+        if (reference == null || reference.isBlank()) {
+            return null;
+        }
+
+        String normalized = reference.trim();
+
+        if (normalized.length() > 100) {
+            throw new IllegalArgumentException(
+                    "Payment reference cannot exceed 100 characters.");
+        }
+
+        return normalized;
     }
 }

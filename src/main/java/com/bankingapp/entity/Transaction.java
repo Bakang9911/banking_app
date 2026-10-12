@@ -32,6 +32,9 @@ public class Transaction {
     @Column(nullable = false)
     private LocalDateTime timestamp;
 
+    @Column(length = 100)
+    private String reference;
+
     public Transaction() {
     }
 
@@ -77,5 +80,13 @@ public class Transaction {
 
     public void setTimestamp(LocalDateTime timestamp) {
         this.timestamp = timestamp;
+    }
+
+    public String getReference() {
+        return reference;
+    }
+
+    public void setReference(String reference) {
+        this.reference = reference;
     }
 }

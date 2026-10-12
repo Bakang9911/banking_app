@@ -34,3 +34,9 @@ build/
 
 ### VS Code ###
 .vscode/
+account.json
+*.bak
+
+ersasusDocumentsbanking_app
+
+utput account.json is not tracked by Git.
