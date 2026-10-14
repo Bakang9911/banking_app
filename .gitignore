@@ -4,6 +4,15 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+# Local secrets, sessions, and runtime/sample data
+.env
+.env.*
+!.env.example
+application-local.properties
+cookies.txt
+account.json
+*.log
+
 ### STS ###
 .apt_generated
 .classpath
